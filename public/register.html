@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register — Inkwell</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="auth-wrap">
+    <div class="auth-card fade-up">
+
+        <div class="auth-logo">Ink<span>well</span></div>
+        <h2>Create an account</h2>
+
+        <div class="form-group">
+            <label for="username">Username</label>
+            <input type="text" id="username" placeholder="your_username" autocomplete="username" maxlength="30">
+        </div>
+
+        <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" placeholder="Min. 6 characters" autocomplete="new-password">
+        </div>
+
+        <div class="form-group">
+            <label for="confirm">Confirm Password</label>
+            <input type="password" id="confirm" placeholder="••••••••" autocomplete="new-password">
+        </div>
+
+        <div id="alert" class="alert"></div>
+
+        <button class="btn btn-primary" id="reg-btn" onclick="register()" style="margin-top:8px;">
+            Create account
+        </button>
+
+        <div class="auth-footer">
+            Already have one? <a href="login.html">Log in →</a>
+        </div>
+
+    </div>
+</div>
+
+<script>
+fetch("/me").then(r => r.json()).then(data => {
+    if (data.loggedIn) window.location = "index.html";
+});
+
+const alertEl = document.getElementById("alert");
+const btn     = document.getElementById("reg-btn");
+
+function showAlert(msg, type = "error") {
+    alertEl.textContent = msg;
+    alertEl.className   = `alert alert-${type} show`;
+}
+
+document.addEventListener("keydown", e => {
+    if (e.key === "Enter") register();
+});
+
+async function register() {
+    const username = document.getElementById("username").value.trim();
+    const password = document.getElementById("password").value;
+    const confirm  = document.getElementById("confirm").value;
+
+    alertEl.className = "alert";
+
+    if (!username || !password || !confirm) {
+        return showAlert("Please fill in all fields.");
+    }
+    if (username.length < 3) {
+        return showAlert("Username must be at least 3 characters.");
+    }
+    if (password.length < 6) {
+        return showAlert("Password must be at least 6 characters.");
+    }
+    if (password !== confirm) {
+        return showAlert("Passwords do not match.");
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner"></span> Creating account…`;
+
+    try {
+        const res  = await fetch("/register", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ username, password })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+            showAlert("Account created! Logging you in…", "success");
+
+            // Auto-login after register
+            await fetch("/login", {
+                method:  "POST",
+                headers: { "Content-Type": "application/json" },
+                body:    JSON.stringify({ username, password })
+            });
+
+            setTimeout(() => { window.location = "index.html"; }, 800);
+        } else {
+            showAlert(data.error || "Registration failed.");
+            btn.disabled = false;
+            btn.textContent = "Create account";
+        }
+
+    } catch {
+        showAlert("Could not reach the server.");
+        btn.disabled = false;
+        btn.textContent = "Create account";
+    }
+}
+</script>
+</body>
+</html>

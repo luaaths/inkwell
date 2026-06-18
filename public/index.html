@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inkwell — Blog</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav>
+    <a href="index.html" class="nav-logo">Ink<span>well</span></a>
+    <div class="nav-links">
+        <span id="nav-username" style="display:none"></span>
+        <a href="create.html" id="nav-write" style="display:none">+ Write</a>
+        <a href="login.html" id="nav-login">Login</a>
+        <button onclick="logout()" id="nav-logout" style="display:none">Logout</button>
+    </div>
+</nav>
+
+<div class="hero">
+    <div class="hero-eyebrow">Community Blog</div>
+    <h1>Stories worth<br>reading.</h1>
+    <p>A space for ideas, tutorials, and thoughts from the community.</p>
+</div>
+
+<div class="page-wrap">
+
+    <div class="section-header">
+        <span class="section-title" id="post-count">Loading…</span>
+        <a href="create.html" id="hero-write-btn" class="btn btn-outline" style="display:none; font-size:0.82rem; padding:7px 14px;">+ New Post</a>
+    </div>
+
+    <div id="posts-container"></div>
+
+</div>
+
+<!-- Expanded post modal overlay -->
+<div id="modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); backdrop-filter:blur(6px); z-index:200; overflow-y:auto; padding:40px 16px;">
+    <div style="max-width:720px; margin:0 auto; position:relative;">
+        <button onclick="closeModal()" style="position:absolute; top:-40px; right:0; background:none; border:none; color:var(--muted); cursor:pointer; font-size:0.9rem; font-family:'Inter',sans-serif;">✕ Close</button>
+        <div id="modal-content" class="post-full fade-up"></div>
+    </div>
+</div>
+
+<script>
+let currentUser = null;
+
+async function init() {
+    const me = await fetch("/me").then(r => r.json());
+    currentUser = me;
+
+    if (me.loggedIn) {
+        document.getElementById("nav-username").textContent = me.username;
+        document.getElementById("nav-username").style.display = "inline";
+        document.getElementById("nav-write").style.display = "inline";
+        document.getElementById("nav-login").style.display = "none";
+        document.getElementById("nav-logout").style.display = "inline";
+        document.getElementById("hero-write-btn").style.display = "inline-flex";
+    }
+
+    loadPosts();
+}
+
+async function loadPosts() {
+    const container = document.getElementById("posts-container");
+    const countEl   = document.getElementById("post-count");
+
+    try {
+        const posts = await fetch("/posts").then(r => r.json());
+
+        countEl.textContent = posts.length === 0 ? "No posts yet" : `${posts.length} post${posts.length === 1 ? "" : "s"}`;
+
+        if (posts.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                    <p>Nothing here yet. <a href="create.html">Write the first post →</a></p>
+                </div>`;
+            return;
+        }
+
+        container.innerHTML = `<div class="posts-grid">${posts.map(renderCard).join("")}</div>`;
+
+    } catch (e) {
+        container.innerHTML = `<div class="empty-state"><p>Could not load posts. Is the server running?</p></div>`;
+    }
+}
+
+function renderCard(post) {
+    const date = new Date(post.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    const excerpt = post.content.length > 140 ? post.content.slice(0, 140) + "…" : post.content;
+    const isOwner = currentUser?.loggedIn && currentUser.username === post.username;
+
+    const thumb = post.image
+        ? `<img src="/uploads/${post.image}" alt="" class="post-image-thumb">`
+        : "";
+
+    const deleteBtn = isOwner
+        ? `<button class="btn-delete" onclick="deletePost(${post.id}, event)">Delete</button>`
+        : "";
+
+    return `
+    <div class="post-card fade-up" onclick="openPost(${post.id})">
+        <div>
+            <div class="post-title">${escHtml(post.title)}</div>
+            <div class="post-meta">
+                <span class="post-author">${escHtml(post.username)}</span>
+                <span class="post-meta-dot"></span>
+                <span>${date}</span>
+            </div>
+            <div class="post-excerpt">${escHtml(excerpt)}</div>
+        </div>
+        <div class="post-actions">
+            ${thumb}
+            ${deleteBtn}
+        </div>
+    </div>`;
+}
+
+async function openPost(id) {
+    const posts = await fetch("/posts").then(r => r.json());
+    const post  = posts.find(p => p.id === id);
+    if (!post) return;
+
+    const date = new Date(post.created_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+
+    document.getElementById("modal-content").innerHTML = `
+        <div class="post-meta" style="margin-bottom:20px;">
+            <span class="post-author">${escHtml(post.username)}</span>
+            <span class="post-meta-dot"></span>
+            <span>${date}</span>
+        </div>
+        <div class="post-full-title">${escHtml(post.title)}</div>
+        ${post.image ? `<img src="/uploads/${post.image}" class="post-full-image" alt="">` : ""}
+        <div class="post-full-content">${escHtml(post.content)}</div>
+    `;
+
+    document.getElementById("modal").style.display = "block";
+    document.body.style.overflow = "hidden";
+}
+
+function closeModal() {
+    document.getElementById("modal").style.display = "none";
+    document.body.style.overflow = "";
+}
+
+document.getElementById("modal").addEventListener("click", function(e) {
+    if (e.target === this) closeModal();
+});
+
+async function deletePost(id, e) {
+    e.stopPropagation();
+    if (!confirm("Delete this post?")) return;
+
+    const res = await fetch(`/posts/${id}`, { method: "DELETE" });
+    const data = await res.json();
+
+    if (data.success) loadPosts();
+    else alert(data.error || "Delete failed");
+}
+
+async function logout() {
+    window.location = "/logout";
+}
+
+function escHtml(str) {
+    return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+}
+
+init();
+</script>
+</body>
+</html>
